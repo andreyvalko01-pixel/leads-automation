@@ -1,0 +1,75 @@
+{
+  "name": "Заявки з сайту → Sheets + Telegram",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "wordpress-lead",
+        "responseMode": "onReceived",
+        "options": {}
+      },
+      "id": "4b1c2a10-1d6e-4c55-9a51-0d8f3c6f2a01",
+      "name": "Webhook (WordPress)",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Те саме очищення, що й у Python-сервісі, але для n8n\nconst body = $input.first().json.body || {};\nconst pick = (...keys) => keys.map(k => body[k]).find(v => v) || '';\n\nlet digits = String(pick('phone', 'tel', 'your-phone')).replace(/\\D/g, '');\nif (digits.length === 10 && digits.startsWith('0')) digits = '38' + digits;\nif (digits.length === 9) digits = '380' + digits;\nconst phone = digits.length === 12 && digits.startsWith('380') ? '+' + digits : null;\n\nconst pageUrl = pick('page_url', 'url', '_wpcf7_container_post_url');\nconst params = pageUrl.includes('?') ? new URLSearchParams(pageUrl.split('?')[1]) : new URLSearchParams();\n\nreturn [{\n  json: {\n    name: pick('name', 'your-name') || 'Без імені',\n    phone,\n    rawPhone: pick('phone', 'tel', 'your-phone'),\n    email: String(pick('email', 'your-email')).toLowerCase(),\n    message: pick('message', 'your-message'),\n    page: pageUrl.split('?')[0],\n    utm_source: body.utm_source || params.get('utm_source') || '',\n    utm_campaign: body.utm_campaign || params.get('utm_campaign') || '',\n    receivedAt: new Date().toISOString(),\n  }\n}];"
+      },
+      "id": "7f2e8a33-3a3b-4c0a-b8c4-5ad1e0c3b102",
+      "name": "Очистити дані",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 300]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "mode": "url", "value": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID" },
+        "sheetName": { "__rl": true, "mode": "name", "value": "Заявки" },
+        "columns": {
+          "mappingMode": "autoMapInputData",
+          "value": {}
+        },
+        "options": {}
+      },
+      "id": "a6c4f9d1-5e0b-4d2b-9a77-8c1f2e3d4b03",
+      "name": "Google Sheets",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4,
+      "position": [700, 200],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
+    },
+    {
+      "parameters": {
+        "chatId": "={{ $env.TELEGRAM_CHAT_ID }}",
+        "text": "=🔔 Нова заявка\n👤 {{ $json.name }}\n📞 {{ $json.phone || $json.rawPhone + ' ⚠️' }}\n💬 {{ $json.message }}\n🏷 {{ $json.utm_source }} {{ $json.utm_campaign }}",
+        "additionalFields": { "parse_mode": "HTML" }
+      },
+      "id": "c8d7e6f5-1a2b-4c3d-8e9f-0a1b2c3d4e04",
+      "name": "Telegram",
+      "type": "n8n-nodes-base.telegram",
+      "typeVersion": 1.2,
+      "position": [700, 400],
+      "retryOnFail": true,
+      "maxTries": 3
+    }
+  ],
+  "connections": {
+    "Webhook (WordPress)": {
+      "main": [[{ "node": "Очистити дані", "type": "main", "index": 0 }]]
+    },
+    "Очистити дані": {
+      "main": [[
+        { "node": "Google Sheets", "type": "main", "index": 0 },
+        { "node": "Telegram", "type": "main", "index": 0 }
+      ]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false
+}

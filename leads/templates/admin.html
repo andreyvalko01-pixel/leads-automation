@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Заявки — журнал</title>
+  <style>
+    :root { --line: #e5e7eb; --muted: #6b7280; }
+    body { margin: 0; font: 14px/1.45 system-ui, -apple-system, sans-serif; color: #111827; background: #f6f7f9; }
+    header { display: flex; align-items: center; gap: 16px; padding: 16px 28px; background: #111827; color: #fff; }
+    header h1 { margin: 0; font-size: 18px; }
+    header .tag { padding: 2px 10px; border-radius: 99px; background: #374151; font-size: 12px; }
+    main { padding: 24px 28px; }
+    .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px; margin-bottom: 22px; }
+    .stat { padding: 14px 16px; background: #fff; border: 1px solid var(--line); border-radius: 10px; }
+    .stat b { display: block; font-size: 24px; }
+    .stat span { color: var(--muted); font-size: 13px; }
+    table { width: 100%; border-collapse: collapse; background: #fff; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+    th { background: #f9fafb; font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+    td small { display: block; color: var(--muted); }
+    .bad { color: #b91c1c; }
+    .dup { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 4px; background: #fef3c7; color: #92400e; font-size: 11px; }
+    .utm { display: inline-block; margin: 0 4px 2px 0; padding: 1px 6px; border-radius: 4px; background: #eef2ff; color: #3730a3; font-size: 12px; }
+    .chip { display: inline-flex; align-items: center; gap: 4px; margin: 0 4px 4px 0; padding: 2px 8px; border-radius: 99px; font-size: 12px; }
+    .chip.done { background: #dcfce7; color: #166534; }
+    .chip.pending { background: #fef9c3; color: #854d0e; }
+    .chip.failed { background: #fee2e2; color: #991b1b; }
+    .err { display: block; max-width: 260px; color: #991b1b; font-size: 11px; }
+    button { border: 0; background: none; color: #2563eb; cursor: pointer; font-size: 12px; padding: 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Заявки з сайту</h1>
+    {% if dry_run %}<span class="tag">тестовий режим — назовні нічого не надсилається</span>{% endif %}
+    <span class="tag">інтеграції: {{ targets | join(", ") }}</span>
+  </header>
+  <main>
+    <div class="stats">
+      <div class="stat"><b>{{ stats.total or 0 }}</b><span>заявок сьогодні</span></div>
+      <div class="stat"><b>{{ stats.dups or 0 }}</b><span>дублів</span></div>
+      <div class="stat"><b>{{ stats.bad_phones or 0 }}</b><span>без коректного телефону</span></div>
+      <div class="stat"><b>{{ pending }}</b><span>чекають повтору</span></div>
+      <div class="stat"><b class="{{ 'bad' if failed else '' }}">{{ failed }}</b><span>не доставлено</span></div>
+    </div>
+
+    <table>
+      <thead>
+        <tr><th>#</th><th>Час</th><th>Клієнт</th><th>Форма / джерело</th><th>Доставка</th></tr>
+      </thead>
+      <tbody>
+        {% for lead in leads %}
+        <tr>
+          <td>{{ lead.id }}</td>
+          <td>{{ lead.created_at[11:16] }}<small>{{ lead.created_at[:10] }}</small></td>
+          <td>
+            {{ lead.name }}{% if lead.duplicate_of %}<span class="dup">дубль #{{ lead.duplicate_of }}</span>{% endif %}
+            {% if lead.phone %}<small>{{ lead.phone }}</small>{% else %}<small class="bad">{{ lead.raw_phone or "—" }} (не розпізнано)</small>{% endif %}
+            {% if lead.email %}<small>{{ lead.email }}</small>{% endif %}
+          </td>
+          <td>
+            {{ lead.form_name }}<small>{{ lead.page_url }}</small>
+            {% for v in lead.utm.values() %}<span class="utm">{{ v }}</span>{% endfor %}
+          </td>
+          <td>
+            {% for d in lead.deliveries %}
+              <span class="chip {{ d.status }}">{{ d.target }}{% if d.attempts > 1 %} ×{{ d.attempts }}{% endif %}</span>
+              {% if d.status != "done" and d.last_error %}
+                <span class="err">{{ d.last_error }}</span>
+                <form method="post" action="/admin/retry/{{ d.id }}" style="display:inline"><button>повторити зараз</button></form>
+              {% endif %}
+            {% endfor %}
+          </td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5">Заявок ще немає</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </main>
+</body>
+</html>
